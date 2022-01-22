@@ -1,10 +1,13 @@
 import hashlib
 from collections import OrderedDict
 import requests
+# import urllib3
 
+# urllib3.disable_warnings()
 class YunGou:
     def __init__(self,payment='wechat'):
-        from service.util.pay.pay_config import get_config    
+        from service.util.pay.pay_config import get_config
+        self.web_url = get_config('web_url')    
         if payment == 'wechat':
             config = get_config('YunGouOS_WXPAY')
         else:
@@ -15,6 +18,7 @@ class YunGou:
         self.WEIXIN_API = 'https://api.pay.yungouos.com/api/pay/wxpay/nativePay'    # 微信
         self.mch_id = config['mch_id']   # 商户号
         self.pay_secret = config['pay_secret']  # 商户密钥
+        self.notify_url = self.web_url + '/notify/yungou'
     def _gen_sign(self, dct):
         """
         :param dct: 所需发送的所有数据的字典集合
@@ -34,7 +38,7 @@ class YunGou:
         # print(type(total_fee))
         data = {
             'out_trade_no': out_trade_no,
-            'total_fee': total_fee,
+            'total_fee': str(total_fee),
             'body': name,
             'mch_id': self.mch_id,
             # 'type': 2,  # 返回二维码
@@ -42,7 +46,10 @@ class YunGou:
         
         data.update({
             'sign': self._gen_sign(data)
-        })        
+        })   
+        data.update({
+            'notify_url':self.notify_url
+        })                
         r = requests.post(self.API,data)
         if r.json()['code'] == 0:
             return {'qr_code':r.json()['data']}  #用于生成二维码付款
@@ -52,16 +59,21 @@ class YunGou:
         # print(type(total_fee))
         data = {
             'out_trade_no': out_trade_no,
-            'total_fee': total_fee,
+            'total_fee': str(total_fee),
             'body': name,
             'mch_id': self.mch_id,
             # 'type': 2,  # 返回二维码
         }
-        
         data.update({
             'sign': self._gen_sign(data)
-        })        
-        r = requests.post(self.WEIXIN_API,data)
+        })    
+        data.update({
+            'notify_url':self.notify_url+'wx'
+        })    
+        try:
+            r = requests.post(self.WEIXIN_API,data)
+        except Exception as e:
+            print(e)
         if r.json()['code'] == 0:
             return {'qr_code':r.json()['data']} #用于生成二维码付款
         return None    
@@ -84,3 +96,14 @@ class YunGou:
         except:
             return None
   
+    def verify(self,data):     #异步通知    这里data=request.from
+        try:
+            signature = data['sign']
+            data.pop('sign')
+            data.pop('openId')
+            data.pop('payChannel')
+            data.pop('time')
+            return signature == self._gen_sign(data)   # 结果为一个布尔值
+        except Exception as e:
+            print(e)
+            return False  

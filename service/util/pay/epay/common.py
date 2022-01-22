@@ -4,18 +4,28 @@ import json
 import re
 
 
-class Epay:
-    def __init__(self):
-        from service.util.pay.pay_config import get_config    
-        config = get_config('易支付')
-        self.API = config['API']
+class Epay(object):
+    def __init__(self,payment='wechat'):
+        from service.util.pay.pay_config import get_config
+        if payment == 'wechat':
+            config = get_config('易支付微信')
+            self.paytype = 'wxpay'
+        elif payment == 'qqpay':
+            config = get_config('易支付QQ')
+            self.paytype = 'qqpay'
+        else:
+            config = get_config('易支付支付宝')
+            self.paytype = 'alipay'
+        self.web_url = get_config('web_url')
+        self.API = config['API']+'/'
         self.ID = config['ID']
         self.KEY = config['KEY']
-        self.JUMP_URL = 'you_return_url'
+        self.notify_url = self.web_url + '/notify/epay'
+        self.return_url = self.web_url + '/#/search'
 
 
     def create_order(self,name, out_trade_no, total_fee):
-        data = {'notify_url': self.JUMP_URL, 'pid': self.ID, 'return_url': self.JUMP_URL, 'sitename': 'KAMIFAKA'}
+        data = {'notify_url': self.notify_url,'return_url':self.return_url, 'pid': self.ID, 'type':self.paytype,}
         data.update(money=total_fee, name=name, out_trade_no=out_trade_no)
         items = data.items()
         items = sorted(items)
@@ -36,12 +46,27 @@ class Epay:
                 pay_url = re.search(r"href=\'(.*)\'", content).group(1)
             else:
                 pay_url = self.API + re.search(r"\.?\/(.*)\'", content).group(1)
-            return {'qr_code':pay_url}
+            return {'qr_code':pay_url,'redirect':1} # 第三方状态1；本地2
         except Exception as e:
-            # print('submit | API请求失败')
+            print('submit | 易支付API请求失败')
             print(e)
             return None
 
+    def verify(self,data):     #异步通知    这里data=request.from
+        try:
+            signature = data['sign']
+            data.pop('sign')
+            data.pop('sign_type')   # 移除一些易支付的智商检查
+            items = data.items()
+            items = sorted(items)
+            wait_sign_str = ''
+            for i in items:
+                wait_sign_str += str(i[0]) + '=' + str(i[1]) + '&'
+            wait_for_sign_str = wait_sign_str[:-1] + self.KEY            
+            return signature == hashlib.md5(wait_for_sign_str.encode('utf-8')).hexdigest()
+        except Exception as e:
+            print(e)
+            return False
 
     def check(self,out_trade_no):
         try:

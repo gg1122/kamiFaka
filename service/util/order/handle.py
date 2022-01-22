@@ -1,4 +1,4 @@
-from service.database.models import Card, Notice,Order
+from service.database.models import Card, Notice,Order,TempOrder
 from service.api.db import db
 import re
 #接口调用
@@ -13,25 +13,49 @@ executor = ThreadPoolExecutor(2)
 
 #日志记录
 from service.util.log import log
+
+
+def notify_success(out_order_id):
+    # 更新状态
+    try:
+        res = TempOrder.query.filter_by(out_order_id = out_order_id,status = False).first()
+        if res:
+            # 生成实际卡密
+            name = res.name
+            payment = res.payment
+            contact = res.contact
+            contact_txt = res.contact_txt
+            price = res.price
+            num = res.num
+            total_price = res.total_price
+            auto = res.auto        
+            with db.auto_commit_db():   # 更新卡密状态
+                TempOrder.query.filter_by(out_order_id = out_order_id).update({'status':True})
+
+            make_order(out_order_id,name,payment,contact,contact_txt,price,num,total_price,auto)
+    except Exception as e:
+        print(e)
+        log(e)
+
 #创建订单--走数据库
 def make_order(out_order_id,name,payment,contact,contact_txt,price,num,total_price,auto):
     # print('后台正在创建卡密')
     #订单ID，商品名称，支付方式，联系方式、备注、单价、数量、总价
     ## 根据name查找对应的卡密信息。---卡密有重复
     # 为避免同一订单二次请求，判断是否重复
-    if not Order.query.filter_by(out_order_id = out_order_id).count():
+    if not (Order.query.filter_by(out_order_id = out_order_id).first()):
         status = True   #订单状态
         # 生成订单 --除了上述内容外，还需要卡密。
         if auto:    # 自动发货--获取卡密
             nums = int(num)
             if nums ==1:
-
                     result = Card.query.filter_by(prod_name = name,isused = False).first()  #此处可用用0，也可以用false
                     if result:
                         card = result.to_json()['card']
                         reuse = result.to_json()['reuse']   #返回True或False
                         if not reuse: #卡密状态修改
-                            Card.query.filter_by(id = result.to_json()['id']).update({'isused':True})
+                            with db.auto_commit_db():
+                                Card.query.filter_by(id = result.to_json()['id']).update({'isused':True})
                     else:
                         card = None
                         status = False
@@ -68,12 +92,14 @@ def make_order(out_order_id,name,payment,contact,contact_txt,price,num,total_pri
                         #     Card.query.filter_by(id = y.to_json()['id']).update({'isused':False})      
                         # 2. 
                         # [Card.query.filter_by(id = y.to_json()['id']).update({'isused':False}) for y in result] #53ms
-                        for y in result:
-                            y.isused = True
+                        # with db.auto_commit_db():     -- 疑似多单时不生效
+                        #     for y in result:
+                        #         y.isused = True
+                        with db.auto_commit_db():
+                            for y in result:
+                                Card.query.filter_by(id = y.to_json()['id']).update({'isused':True})                      
                         # db.auto_commit_db() #1.9ms--9ms---此步骤在后续commmit时生效
                         # [y.isused=False for y in result]
-                        
-
                 else:
                     card = None
                     status = False

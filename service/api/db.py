@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy as BaseSQLAlchemy
+from sqlalchemy.orm import scoped_session, sessionmaker # 解决高并发
 from contextlib import contextmanager
 from flask import Flask
 from flask_cors import CORS
@@ -29,15 +30,18 @@ class SQLAlchemy(BaseSQLAlchemy):
     # 利用contextmanager管理器,对try/except语句封装，使用的时候必须和with结合！！！
     @contextmanager
     def auto_commit_db(self):
+        # 高并发下的数据库问题
+        self.session = scoped_session(sessionmaker(bind=self.engine))
         try:
             yield
             self.session.commit()
         except Exception as e:
             # 加入数据库commit提交失败，必须回滚！！！
             self.session.rollback()
+            print(e)
             raise e
-        finally:
-            self.session.close()
+        # finally:
+        #     self.session.close()        
 
 
 #路径设置
@@ -57,10 +61,11 @@ app.config['SQLALCHEMY_BINDS'] =  {'order':'sqlite:///'+os.path.join(SQL_PATH,'m
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Setup the Flask-JWT-Extended extension. Read more: https://flask-jwt-extended.readthedocs.io/en/stable/options/
 # app.config['JWT_SECRET_KEY'] = ''.join(random.sample(string.ascii_letters + string.digits, 46))  # Change this!
-app.config['JWT_SECRET_KEY'] = 'a44545de51d5e4deaswdedcecvrcrfr5f454fd1cec415r4f'  # Change this!
+app.config['JWT_SECRET_KEY'] = 'EXZgC3BMhPxtu4Kq6W7mo9rAT0yYGsOiQNf5vUInSjRVeb'  # Change this!
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)
 
 jwt = JWTManager(app)
 
 db = SQLAlchemy(app)
 
+# db = scoped_session(sessionmaker(bind=db2.engine))

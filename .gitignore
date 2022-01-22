@@ -26,8 +26,7 @@ v4
 dist0
 
 # My configurations:
-myconfig.py
-my_db_init.py
+db_init.py
 
 # system img
 public/images/*
@@ -44,3 +43,4 @@ public/sql/*
 ssl
 tg.py
 mv.py
+@TEMP

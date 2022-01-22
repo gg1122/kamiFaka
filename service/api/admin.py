@@ -104,7 +104,7 @@ def upload():
         #secure_filename可以使上传文件的文件名更加安全，但是对中文的支持不是很好，如果想要使用secure_file()可以在使用之前将filename转换成英文或时间戳
         # filename = secure_filename(file.filename)
         if file.filename in ['logo.png','favicon.ico']:
-            print(type(file.filename))
+            # print(type(file.filename))
             filename = file.filename
         else:
             filename = time.strftime('%Y-%m-%d_%H-%M-%S',time.localtime()) +'.' + file.filename.split('.')[-1]
@@ -132,9 +132,21 @@ def dashboard():
         info['total_num'] = 0
     # # 历史数据获取
     orders = Order.query.filter(Order.updatetime >= NOW - timedelta(days=7)).all()
-    info['history_date'] = [x.updatetime.strftime('%Y-%m-%d %H:%M:%S') for x in orders]
-    info['history_price'] = [x.total_price for x in orders]
+    info['history_date'],info['history_price'] = sort_count([(x.updatetime.strftime('%Y-%m-%d'),x.total_price) for x in orders])
     return jsonify(info)    
+
+def sort_count(temp):
+    # temp = [('2021-04-26', 0.9), ('2021-04-26', 1.97), ('2021-04-26', 0.9), ('2021-04-27', 1.9)]
+    date = []
+    price = []
+    for v in temp:
+        if v[0] not in date:
+            date.append(v[0])
+            price.append(v[1])
+            continue
+        price[-1] += v[1]
+
+    return date,price    
 
 
 @admin.route('/incom_count', methods=['get'])
@@ -154,18 +166,19 @@ def incom_count():
             # orders = Order.query.filter_by((Order.updatetime <= NOW - timedelta(days=1))).all()
             days = 1
             # Scrapy.query.filter(Scrapy.date <= NOW - timedelta(days=1)).all()
-            pass
+            ftime = '%H'  #天内数据以小时统计
         elif id ==2:  #周
             days = 7
-            pass
+            ftime = '%d'  #周内数据以天时统计
         elif id == 3: #月
             days = 30
-            pass
+            ftime = '%d'  #月内数据以天时统计
         elif id == 4: #年
             days = 365
-            pass
+            ftime = '%m'  #年内数据以月时统计
         elif id == 5: #全部
             days = 0
+            ftime = '%d'  #全部数据以天时统计
         else:
             return '参数丢失', 400        
         if days !=0:
@@ -177,9 +190,7 @@ def incom_count():
     except Exception as e:
         log(e)
         return '数据库异常', 500    
-    info['history_date'] = [x.updatetime.strftime('%Y-%m-%d %H:%M:%S') for x in orders]
-    info['history_price'] = [x.total_price for x in orders]
-    # info['top'] = [{}] #名称，销量，价格
+    info['history_date'],info['history_price'] = sort_count([(x.updatetime.strftime(ftime),x.total_price) for x in orders])    
     return jsonify(info)
 
 @admin.route('/get_smtp', methods=['get'])
@@ -259,7 +270,7 @@ def update_sms():
 @jwt_required
 def test_sms():
     # print(request.json)
-    mobile = request.json.get('email', None)
+    mobile = request.json.get('mobile', None)
     message = request.json.get('message', None)
     data = request.json.get('data', None)
     if not all([mobile,message,data]):
@@ -285,7 +296,7 @@ def update_class():
     info = request.json.get('info', None)
     sort = request.json.get('sort', None)
     methord = request.json.get('methord', None) #update,add,delete
-    print(methord)
+    # print(methord)
     if methord not in ['update','delete','add']:
         return 'Missing data 1', 400
     # 调用smtp函数发送邮件
@@ -515,7 +526,12 @@ def remove_order():
         return 'Missing Data', 400
     try:
         with db.auto_commit_db():
-            Order.query.filter_by(id = id).delete()
+            if id == "all":
+                orders = Order.query.all()
+                for x in orders:
+                    db.session.delete(x)
+            else:
+                Order.query.filter_by(id = id).delete()
         return '删除成功', 200    
     except Exception as e:
         log(e)
